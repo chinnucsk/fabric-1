@@ -392,6 +392,15 @@ group_rows_fun(GroupLevel) when is_integer(GroupLevel) ->
 
 reduce_fold(_Key, _Red, #view_acc{limit=0} = Acc) ->
     {stop, Acc};
+reduce_fold(Key, Red, #view_acc{offset=nil}=Acc) ->
+    case rexi:sync_reply(stream_start) of
+    ok ->
+        reduce_fold(Key, Red, Acc#view_acc{offset=streaming});
+    stop ->
+        exit(normal);
+    timeout ->
+        exit(timeout)
+    end;
 reduce_fold(_Key, Red, #view_acc{group_level=0} = Acc) ->
     send(null, Red, Acc);
 reduce_fold(Key, Red, #view_acc{group_level=exact} = Acc) ->
@@ -403,23 +412,11 @@ reduce_fold(K, Red, #view_acc{group_level=I} = Acc) when I > 0 ->
 
 
 send(Key, Value, #view_acc{limit=Limit} = Acc) ->
-    case put(fabric_sent_first_row, true) of
-    undefined ->
-        case rexi:sync_reply(#view_row{key=Key, value=Value}) of
-        ok ->
-            {ok, Acc#view_acc{limit=Limit-1}};
-        stop ->
-            exit(normal);
-        timeout ->
-            exit(timeout)
-        end;
-    true ->
-        case rexi:stream(#view_row{key=Key, value=Value}) of
-        ok ->
-            {ok, Acc#view_acc{limit=Limit-1}};
-        timeout ->
-            exit(timeout)
-        end
+    case rexi:stream(#view_row{key=Key, value=Value}) of
+    ok ->
+        {ok, Acc#view_acc{limit=Limit-1}};
+    timeout ->
+        exit(timeout)
     end.
 
 changes_enumerator(#doc_info{id= <<"_local/", _/binary>>, high_seq=Seq},
