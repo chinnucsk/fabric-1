@@ -404,7 +404,7 @@ group_rows_fun(GroupLevel) when is_integer(GroupLevel) ->
 reduce_fold(_Key, _Red, #view_acc{limit=0} = Acc) ->
     {stop, Acc};
 reduce_fold(Key, Red, #view_acc{offset=nil}=Acc) ->
-    case rexi:sync_reply(stream_start) of
+    case rexi:stream_init() of
     ok ->
         reduce_fold(Key, Red, Acc#view_acc{offset=streaming});
     stop ->
