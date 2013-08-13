@@ -431,9 +431,11 @@ send(Key, Value, #view_acc{limit=Limit} = Acc) ->
     end.
 
 changes_enumerator(DocInfo, {Db, Seq, Args, Options, false}) ->
-    case rexi:sync_reply(stream_start) of
+    case rexi:stream_init() of
     ok ->
         changes_enumerator(DocInfo, {Db, Seq, Args, Options, true});
+    stop ->
+        exit(normal);
     timeout ->
         exit(timeout)
     end;
@@ -453,8 +455,12 @@ changes_enumerator(DocInfo, {Db, _Seq, Args, Options, Started}) ->
     Results ->
         Opts = if Conflicts -> [conflicts]; true -> [] end,
         ChangesRow = changes_row(Db, DocInfo, Results, Del, IncludeDocs, Opts),
-        Go = rexi:sync_reply(ChangesRow),
-        {Go, {Db, Seq, Args, Options, Started}}
+        case rexi:stream(ChangesRow) of
+            ok ->
+                {ok, {Db, Seq, Args, Options, Started}};
+            timeout ->
+                exit(timeout)
+        end
     end.
 
 changes_row(Db, #doc_info{id=Id, high_seq=Seq}=DI, Results, Del, true, Opts) ->
