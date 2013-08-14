@@ -26,7 +26,18 @@ go(DbName, GroupId, View, Args, Callback, Acc0) when is_binary(GroupId) ->
 
 go(DbName, DDoc, View, Args, Callback, Acc0) ->
     Shards = fabric_view:get_shards(DbName, Args),
-    Workers = fabric_util:submit_jobs(Shards, map_view, [DDoc, View, Args]),
+    Workers0 = fabric_util:submit_jobs(Shards, map_view, [DDoc, View, Args]),
+    RexiMon = fabric_util:create_monitors(Workers0),
+    case fbaric_util:stream_start(Workers, #shard.ref) of
+        {ok, Workers} ->
+            do thing;
+        {timeout, _} ->
+            Callback({error, timeout}, Acc0);
+        {error, Resp} ->
+            {ok, Resp}
+    end.
+
+
     #view_query_args{limit = Limit, skip = Skip, keys = Keys} = Args,
     State = #collector{
         db_name=DbName,
@@ -39,7 +50,6 @@ go(DbName, DDoc, View, Args, Callback, Acc0) ->
         sorted = Args#view_query_args.sorted,
         user_acc = Acc0
     },
-    RexiMon = fabric_util:create_monitors(Workers),
     try rexi_utils:recv(Workers, #shard.ref, fun handle_message/3,
         State, infinity, 1000 * 60 * 60) of
     {ok, NewState} ->
